@@ -17,7 +17,7 @@
 
 
 double sqr(double x) { return x * x; };
-
+ 
 class Vector {
 public:
 	explicit Vector(double x = 0, double y = 0, double z = 0) {
