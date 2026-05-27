@@ -212,8 +212,199 @@ public:
 		// locate boundary vertices
 		// put them on a unit circle within [0,1]^2
 		// then iterate : for each interior vertices, set their parameterization to be the average of their neighbor's parameterization.
-		
-		
+		int N = vertices.size();
+
+		if (N == 0) return;
+		std::vector<std::vector<int> > neighbors(N);
+		std::map<std::pair<int, int>, int> edge_count;
+
+		auto add_neighbor = [&](int a, int b) {
+			for (int k = 0; k < (int)neighbors[a].size(); k++) {
+				if (neighbors[a][k] == b) return;
+			}
+			neighbors[a].push_back(b);
+		};
+
+		auto add_edge = [&](int a, int b) {
+			if (a < 0 || b < 0 || a >= N || b >= N || a == b) return;
+
+			add_neighbor(a, b);
+			add_neighbor(b, a);
+
+			if (a > b) {
+				int tmp = a;
+				a = b;
+				b = tmp;
+			}
+
+			edge_count[std::pair<int, int>(a, b)]++;
+		};
+
+		for (int t = 0; t < (int)indices.size(); t++) {
+			int a = indices[t].vtx[0];
+			int b = indices[t].vtx[1];
+			int c = indices[t].vtx[2];
+
+			add_edge(a, b);
+			add_edge(b, c);
+			add_edge(c, a);
+		}
+
+		std::vector<std::vector<int> > boundary_neighbors(N);
+		std::vector<bool> is_boundary(N, false);
+
+		for (std::map<std::pair<int, int>, int>::iterator it = edge_count.begin();
+			it != edge_count.end(); ++it) {
+
+			if (it->second == 1) {
+				int a = it->first.first;
+				int b = it->first.second;
+
+				boundary_neighbors[a].push_back(b);
+				boundary_neighbors[b].push_back(a);
+
+				is_boundary[a] = true;
+				is_boundary[b] = true;
+			}
+		}
+
+		int start = -1;
+		for (int i = 0; i < N; i++) {
+			if (is_boundary[i]) {
+				start = i;
+				break;
+			}
+		}
+
+		if (start == -1) {
+			for (int i = 0; i < N; i++) {
+				uvs[i] = Vector(0.5, 0.5, 0.0);
+			}
+			return;
+		}
+
+		std::vector<int> boundary;
+		std::vector<bool> visited_boundary(N, false);
+
+		int prev = -1;
+		int cur = start;
+
+		while (true) {
+			boundary.push_back(cur);
+			visited_boundary[cur] = true;
+
+			int next = -1;
+
+			for (int k = 0; k < (int)boundary_neighbors[cur].size(); k++) {
+				int candidate = boundary_neighbors[cur][k];
+
+				if (candidate != prev) {
+					if (candidate == start || !visited_boundary[candidate]) {
+						next = candidate;
+						break;
+					}
+				}
+			}
+
+			if (next == -1 || next == start) break;
+
+			prev = cur;
+			cur = next;
+
+			if ((int)boundary.size() > N) break;
+		}
+
+		int B = (int)boundary.size();
+
+		if (B < 3) {
+			for (int i = 0; i < N; i++) {
+				uvs[i] = Vector(0.5, 0.5, 0.0);
+			}
+			return;
+		}
+
+		double perimeter = 0.0;
+
+		for (int i = 0; i < B; i++) {
+			int a = boundary[i];
+			int b = boundary[(i + 1) % B];
+			perimeter += (vertices[b] - vertices[a]).norm();
+		}
+
+		double cumulative = 0.0;
+		double radius = 0.45;
+
+		for (int i = 0; i < B; i++) {
+			int v = boundary[i];
+
+			double theta;
+
+			if (perimeter > 1e-20) {
+				theta = 2.0 * M_PI * cumulative / perimeter;
+			} else {
+				theta = 2.0 * M_PI * i / B;
+			}
+
+			uvs[v] = Vector(
+				0.5 + radius * cos(theta),
+				0.5 + radius * sin(theta),
+				0.0
+			);
+
+			int next_v = boundary[(i + 1) % B];
+			cumulative += (vertices[next_v] - vertices[v]).norm();
+		}
+
+		for (int i = 0; i < N; i++) {
+			if (!is_boundary[i]) {
+				uvs[i] = Vector(0.5, 0.5, 0.0);
+			}
+		}
+
+		std::vector<Vector> new_uvs = uvs;
+
+		int nbiter = 10000;
+
+		for (int iter = 0; iter < nbiter; iter++) {
+
+			double max_change2 = 0.0;
+
+			for (int i = 0; i < N; i++) {
+
+				if (is_boundary[i]) {
+					new_uvs[i] = uvs[i];
+					continue;
+				}
+
+				if (neighbors[i].empty()) {
+					new_uvs[i] = uvs[i];
+					continue;
+				}
+
+				Vector avg(0.0, 0.0, 0.0);
+
+				for (int k = 0; k < (int)neighbors[i].size(); k++) {
+					avg = avg + uvs[neighbors[i][k]];
+				}
+
+				avg = avg / (double)neighbors[i].size();
+
+				Vector diff = avg - uvs[i];
+				double change2 = diff.norm2();
+
+				if (change2 > max_change2) {
+					max_change2 = change2;
+				}
+
+				new_uvs[i] = avg;
+			}
+
+			uvs.swap(new_uvs);
+
+			if (max_change2 < 1e-20) {
+				break;
+			}
+		}
 	}
 	
 
